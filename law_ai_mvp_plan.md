@@ -1,7 +1,7 @@
 # Law AI Product Requirements Document (PRD)
 
 ## 🧭 Product Overview
-A domain-specific AI assistant designed for legal professionals and students to semantically search, summarize, and explore case law. The MVP focuses on U.S. case law (federal + select state) using open data sources like CourtListener. It provides natural language Q&A and structured legal information (facts, issues, holdings, citations) similar to *Perplexity* but specialized for law.
+A domain-specific AI assistant designed for legal professionals and students to semantically search, summarize, and explore case law. The MVP focuses on U.S. case law (federal + select state) using open data sources like CourtListener. It provides natural language Q&A and structured legal information (facts, issues, holdings, citations) similar to *Perplexity* but specialized for law. In addition to a local case corpus, the MVP supports Perplexity-style web RAG for general-purpose queries so results are not limited to downloaded cases.
 
 ---
 
@@ -10,6 +10,7 @@ A domain-specific AI assistant designed for legal professionals and students to 
 - Enable users to query case law in natural language.
 - Provide concise summaries (facts, issue, holding, reasoning) with verified citations.
 - Use only open or user-provided data to minimize cost and licensing constraints.
+- Support hybrid retrieval that augments the local corpus with trusted web sources for broader coverage.
 
 ---
 
@@ -42,6 +43,12 @@ A domain-specific AI assistant designed for legal professionals and students to 
    - Cache recent queries to reduce API calls and cost.
    - Implement simple rate-limiting.
 
+7. **Hybrid RAG with Web Search (Perplexity-like)**
+   - When local corpus recall or confidence is low, augment with live web search (e.g., Bing, Tavily, SerpAPI).
+   - Fetch, extract, chunk, and embed top pages; re-rank with legal intent signals.
+   - Synthesize answers using mixed sources; always cite URLs alongside case citations.
+   - User toggle: “Legal corpus only” vs. “Hybrid (web + corpus)”.
+
 ---
 
 ## 🧠 Technical Architecture
@@ -52,13 +59,16 @@ A domain-specific AI assistant designed for legal professionals and students to 
 **LLM:** GPT-4 or Claude API (configurable)  
 **Embeddings:** `text-embedding-3-large` (OpenAI) or `bge-large-en` (open-source)  
 **Data Source:** CourtListener API (OpenJurist optional)  
+**Web Search:** Bing Web Search or Tavily API (fallback: SerpAPI)  
+**Content Extraction:** Readability/Trafilatura for clean text; HTML-to-text fallback  
 **Hosting:**
 - Backend on Render / Fly.io / local server for MVP
 - Vector DB hosted (or self-hosted small instance)
 
-**Pipeline (RAG):**
-1. User query → embedding search → top N cases → LLM summarization.
-2. Results returned with citations + source preview.
+**Pipeline (Hybrid RAG):**
+1. User query → embedding search over local corpus → candidate cases + confidence score.
+2. If low-confidence or user selects Hybrid: web search → fetch pages → extract → chunk → embed → re-rank with local results.
+3. LLM synthesizes grounded answer with citations to cases and URLs; return with previews/snippets.
 
 ---
 
@@ -132,6 +142,7 @@ A domain-specific AI assistant designed for legal professionals and students to 
 - **Engagement:** Avg. queries per session and dwell time per result.
 - **Reliability:** % of queries returning valid answers.
 - **Cost Efficiency:** Average API cost per query.
+- **Coverage:** % of queries answered with at least one credible source (local or web).
 
 ---
 
@@ -143,9 +154,11 @@ A domain-specific AI assistant designed for legal professionals and students to 
 | Hallucinated citations | Always display verified sources; include links/snippets |
 | Legal accuracy concerns | Add disclaimers; allow user feedback/corrections |
 | Over-complex MVP | Start with Q&A + citations + summaries only |
+| Web content reliability/licensing | Prefer reputable sources; respect robots/ToS; cache snapshots |
+| Latency from live web retrieval | Parallelize search/fetch; cache results; stream partial answers |
 
 ---
 
 ## 🧩 Summary
-The MVP delivers a legally focused AI assistant combining RAG-based semantic search with grounded summaries and citations. The initial release targets law students, offering accurate, source-backed case insights. Post-MVP expansions will add personal uploads, citation graphing, and community validation — evolving toward a trusted, AI-powered legal research platform.
+The MVP delivers a legally focused AI assistant combining hybrid (local + web) RAG-based semantic search with grounded summaries and citations. The initial release targets law students, offering accurate, source-backed case insights. Post-MVP expansions will add personal uploads, citation graphing, and community validation — evolving toward a trusted, AI-powered legal research platform.
 
