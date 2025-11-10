@@ -27,12 +27,10 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION: str = "case_law"
 
     # LLM API Keys
-    OPENAI_API_KEY: str = ""
-    ANTHROPIC_API_KEY: str = ""
+    LLM_API_KEY: str = ""
 
     # Web Search
-    BING_API_KEY: str = ""
-    TAVILY_API_KEY: str = ""
+    SEARCH_API_KEY: str = ""
 
     # Redis Cache
     REDIS_HOST: str = "localhost"

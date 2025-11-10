@@ -1,6 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
+from sqlalchemy.orm import Session
+from app.db import get_db
+from models import Case
+from services import (
+    cache_service,
+    vector_search_service,
+    web_search_service,
+    llm_service
+)
 
 router = APIRouter()
 
@@ -28,19 +37,115 @@ class SearchResponse(BaseModel):
 
 
 @router.post("/", response_model=SearchResponse)
-async def search_cases(query: SearchQuery):
+async def search_cases(query: SearchQuery, db: Session = Depends(get_db)):
     """
     Semantic search over case law corpus with optional web augmentation.
-    """
-    # TODO: Implement RAG pipeline
-    # 1. Embed query
-    # 2. Search vector DB
-    # 3. If hybrid mode and low confidence, fetch web results
-    # 4. Generate answer with LLM
-    # 5. Return with citations
 
-    return SearchResponse(
-        answer="This is a placeholder response. RAG pipeline will be implemented.",
-        sources=[],
-        mode=query.mode
-    )
+    RAG Pipeline:
+    1. Check cache for recent identical queries
+    2. Embed query and search vector database
+    3. If hybrid mode and low confidence, augment with web search
+    4. Generate legal answer using LLM with case citations
+    5. Cache and return response
+    """
+    try:
+        # Step 1: Check cache
+        cached_response = cache_service.get_cached_response(query.query, query.mode)
+        if cached_response:
+            print(f"Cache hit for query: {query.query[:50]}...")
+            return SearchResponse(**cached_response)
+
+        # Step 2: Vector search for similar cases
+        vector_results = vector_search_service.search_similar_cases(
+            query_text=query.query,
+            limit=query.limit,
+            score_threshold=0.5
+        )
+
+        # Fetch full case data from database
+        case_sources = []
+        for result in vector_results:
+            case_id = result.get("case_id")
+            if case_id:
+                case = db.query(Case).filter(Case.id == case_id).first()
+                if case:
+                    case_sources.append({
+                        "case_id": case.id,
+                        "case_name": case.case_name,
+                        "citation": case.citation,
+                        "court": case.court,
+                        "year": case.year,
+                        "facts": case.facts,
+                        "holding": case.holding,
+                        "reasoning": case.reasoning,
+                        "score": result.get("score", 0.0),
+                        "url": case.full_text_url or f"/api/v1/cases/{case.id}"
+                    })
+
+        # Step 3: Determine if we need web augmentation
+        web_sources = None
+        use_web_search = False
+
+        if query.mode == "hybrid":
+            # Check if vector search has low confidence
+            avg_score = sum(c.get("score", 0) for c in case_sources) / len(case_sources) if case_sources else 0
+
+            # Reduced threshold from 0.7 to 0.5 - BGE embeddings typically score lower
+            # Only use web search if we have very few results or very low confidence
+            if avg_score < 0.5 or len(case_sources) < 2:
+                print(f"Low confidence ({avg_score:.2f}), using web search augmentation")
+                use_web_search = True
+                web_result = web_search_service.search_legal_content(query.query, max_results=5)
+                web_sources = web_result.get("results", [])
+            else:
+                print(f"Confidence: {avg_score:.2f} - using corpus only")
+
+        # Step 4: Generate answer with LLM
+        if not case_sources and not web_sources:
+            raise HTTPException(
+                status_code=404,
+                detail="No relevant cases found. Try a different query or check if the database has been seeded with cases."
+            )
+
+        llm_result = llm_service.generate_legal_answer(
+            query=query.query,
+            case_sources=case_sources,
+            web_sources=web_sources if use_web_search else None
+        )
+
+        answer = llm_result["answer"]
+
+        # Step 5: Format sources for response
+        sources = []
+        for case in case_sources:
+            # Use LLM to generate a brief summary if needed
+            summary = case.get("holding", "")[:200] if case.get("holding") else "Summary not available"
+
+            sources.append(SearchResult(
+                case_name=case["case_name"],
+                citation=case["citation"],
+                court=case["court"],
+                year=case["year"],
+                summary=summary,
+                relevance_score=case["score"],
+                url=case["url"]
+            ))
+
+        response_data = {
+            "answer": answer,
+            "sources": sources,
+            "mode": query.mode
+        }
+
+        # Step 6: Cache the response
+        cache_service.cache_response(query.query, response_data, query.mode)
+
+        return SearchResponse(**response_data)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in search endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

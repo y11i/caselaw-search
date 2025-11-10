@@ -2,6 +2,8 @@
 
 A domain-specific AI assistant for semantic search, summarization, and exploration of U.S. case law with hybrid RAG (local corpus + web search).
 
+> **🚀 Quick Start**: See [QUICK_START.md](./QUICK_START.md) for simple setup and run commands.
+
 ## Tech Stack
 
 - **Frontend**: Next.js 15, TypeScript, TailwindCSS
@@ -55,6 +57,12 @@ cd caselaw-search
 docker-compose up -d
 ```
 
+Kill any processes that are running at the ports beloe 
+```
+sudo lsof -i :<port>
+sudo kill <pid>
+```
+
 This starts:
 - PostgreSQL (port 5432)
 - Qdrant vector DB (port 6333)
@@ -103,6 +111,68 @@ npm run dev
 ```
 
 Frontend will be available at: http://localhost:3000
+
+## MVP Backend - Getting Started
+
+The MVP focuses on the backend with a **legal-oriented RAG pipeline**. Follow these steps:
+
+### 1. Ensure Docker Services are Running
+
+```bash
+docker-compose up -d
+```
+
+### 2. Activate Backend Environment
+
+```bash
+cd backend
+source venv/bin/activate  # or venv\Scripts\activate on Windows
+```
+
+### 3. Seed Database with Landmark Cases
+
+This fetches ~20 Supreme Court cases from CourtListener and creates embeddings:
+
+```bash
+python seed_database.py --count 20
+```
+
+This will take a few minutes as it:
+- Fetches cases from CourtListener API
+- Generates embeddings using DeepSeek
+- Stores cases in PostgreSQL
+- Indexes embeddings in Qdrant
+
+### 4. Start the Backend Server
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### 5. Test Legal Queries
+
+Run the test script to verify the RAG pipeline:
+
+```bash
+python test_legal_queries.py
+```
+
+Or test manually at: http://localhost:8000/docs
+
+**Example Legal Queries:**
+- "What are Miranda rights?"
+- "Explain qualified immunity for police officers"
+- "What is the exclusionary rule?"
+- "What did Brown v Board of Education establish?"
+
+### Key MVP Features
+
+✅ **Legal-Oriented System Prompt** - Specialized for case law analysis using IRAC framework
+✅ **Hybrid RAG** - Vector search with web fallback for low-confidence queries
+✅ **Proper Citations** - Automatic legal citation formatting
+✅ **CourtListener Integration** - Real landmark Supreme Court cases
+✅ **Redis Caching** - Performance optimization for repeated queries
+✅ **Semantic Search** - Qdrant vector database with DeepSeek embeddings
 
 ## API Endpoints
 
@@ -157,13 +227,11 @@ npm run lint
 ### Backend (.env)
 
 ```env
-# LLM API Keys
-OPENAI_API_KEY=your_openai_key
-ANTHROPIC_API_KEY=your_anthropic_key
+# LLM API Key
+LLM_API_KEY=your_llm_key
 
 # Web Search
-BING_API_KEY=your_bing_key
-TAVILY_API_KEY=your_tavily_key
+SEARCH_API_KEY=your_search_key
 
 # CourtListener
 COURTLISTENER_API_KEY=your_courtlistener_key
@@ -189,14 +257,6 @@ REDIS_PORT=6379
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
-
-## Next Steps
-
-1. Implement RAG pipeline in backend/services/
-2. Add database models for cases
-3. Integrate CourtListener API for data ingestion
-4. Build search UI components
-5. Add authentication (optional)
 
 ## License
 

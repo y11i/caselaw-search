@@ -1,0 +1,21 @@
+{
+  "name": "legal-ai",
+  "version": "0.1.0",
+  "description": "RAG-based legal case law search with Next.js and FastAPI",
+  "private": true,
+  "scripts": {
+    "setup": "npm run setup:backend && npm run setup:frontend && npm run setup:env",
+    "setup:backend": "cd backend && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt",
+    "setup:frontend": "cd frontend && npm install",
+    "setup:env": "test -f backend/.env || cp backend/.env.example backend/.env && test -f frontend/.env.local || cp frontend/.env.local.example frontend/.env.local",
+    "services": "docker-compose up -d",
+    "services:stop": "docker-compose down",
+    "start:backend": "cd backend && source venv/bin/activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "start:frontend": "cd frontend && npm run dev",
+    "dev": "npm run services && concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "clean": "rm -rf backend/venv frontend/node_modules frontend/.next"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

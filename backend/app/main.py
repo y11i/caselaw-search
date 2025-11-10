@@ -2,12 +2,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api import router as api_router
+from app.db import init_db
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Legal AI RAG API for semantic case law search"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on application startup"""
+    init_db()
+    print("Database initialized successfully")
 
 # CORS middleware
 app.add_middleware(
