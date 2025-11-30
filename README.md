@@ -8,7 +8,7 @@ A domain-specific AI assistant for semantic search, summarization, and explorati
 
 - **Frontend**: Next.js 15, TypeScript, TailwindCSS
 - **Backend**: FastAPI (Python), PostgreSQL, Qdrant
-- **LLM**: OpenAI GPT-5 / Anthropic Claude
+- **LLM**: Deepseek
 - **Vector DB**: Qdrant
 - **Cache**: Redis
 - **Data Source**: CourtListener API
