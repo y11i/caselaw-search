@@ -31,6 +31,7 @@ LANDMARK_CASES = [
     {"id": 99112, "name": "Engel v. Vitale (1962)"},
     {"id": 108530, "name": "Roe v. Wade (1973)"},  # Alternative ID
     {"id": 112155, "name": "New York Times Co. v. Sullivan (1964)"},
+    {"id": 625847, "name": "Sackett v. Environmental Protection Agency"}
 ]
 
 

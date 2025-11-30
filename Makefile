@@ -1,4 +1,4 @@
-.PHONY: help setup start-services start-backend start-frontend start stop clean
+.PHONY: help setup start-services start-backend start-frontend start stop clean reset-db seed-db seed-landmark reseed-db
 
 help:
 	@echo "Legal AI - Available Commands:"
@@ -10,6 +10,12 @@ help:
 	@echo "  make start           - Start all services + backend + frontend"
 	@echo "  make stop            - Stop all Docker services"
 	@echo "  make clean           - Remove virtual env and node_modules"
+	@echo ""
+	@echo "Database commands:"
+	@echo "  make reset-db        - Reset database (drops all tables and data)"
+	@echo "  make seed-db         - Seed database with landmark cases (default: 20 cases)"
+	@echo "  make seed-landmark   - Seed database with specific landmark cases"
+	@echo "  make reseed-db       - Reset and seed database (convenience command)"
 	@echo ""
 
 setup:
@@ -87,3 +93,19 @@ clean:
 	rm -rf frontend/node_modules
 	rm -rf frontend/.next
 	@echo "✅ Cleanup complete"
+
+reset-db:
+	@echo "🔄 Resetting database..."
+	@echo "⚠️  WARNING: This will delete ALL data!"
+	cd backend && source venv/bin/activate && python reset_database.py
+
+seed-db:
+	@echo "🌱 Seeding database with landmark cases..."
+	cd backend && source venv/bin/activate && python seed_database.py --count 20
+
+seed-landmark:
+	@echo "🌱 Seeding database with specific landmark cases..."
+	cd backend && source venv/bin/activate && python seed_landmark_cases.py
+
+reseed-db: reset-db seed-db
+	@echo "✅ Database reset and reseeded successfully!"
