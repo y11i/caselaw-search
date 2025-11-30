@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
@@ -12,6 +13,37 @@ from services import (
 )
 
 router = APIRouter()
+
+
+YEAR_PATTERN = re.compile(r"\b(1[8-9]\d{2}|20\d{2})\b")
+CASE_REFERENCE_PATTERN = re.compile(r"([A-Za-z][\w&.,' -]+ v\. [A-Za-z][\w&.,' -]+)", re.IGNORECASE)
+
+
+def extract_years(text: str) -> List[int]:
+    return [int(year) for year in YEAR_PATTERN.findall(text)]
+
+
+def extract_case_reference(text: str) -> Optional[str]:
+    match = CASE_REFERENCE_PATTERN.search(text)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+def case_reference_in_sources(reference: str, sources: List[dict]) -> bool:
+    normalized_reference = reference.lower()
+
+    def normalize_name(name: str) -> str:
+        return name.lower().replace("co.", "company").replace("corp.", "corporation")
+
+    for source in sources:
+        case_name = source.get("case_name", "")
+        citation = source.get("citation", "")
+        if normalized_reference in case_name.lower() or normalized_reference in citation.lower():
+            return True
+        if normalize_name(reference) in normalize_name(case_name):
+            return True
+    return False
 
 
 class SearchQuery(BaseModel):
@@ -85,6 +117,12 @@ async def search_cases(query: SearchQuery, db: Session = Depends(get_db)):
         # Step 3: Determine if we need web augmentation
         web_sources = None
         use_web_search = False
+        query_years = extract_years(query.query)
+        requested_year = max(query_years) if query_years else None
+        latest_case_year = max((c.get("year") or 0) for c in case_sources) if case_sources else 0
+        recency_gap = requested_year and requested_year > latest_case_year
+        case_reference = extract_case_reference(query.query)
+        reference_found = case_reference and case_reference_in_sources(case_reference, case_sources)
 
         if query.mode == "hybrid":
             # Check if vector search has low confidence
@@ -92,8 +130,18 @@ async def search_cases(query: SearchQuery, db: Session = Depends(get_db)):
 
             # Reduced threshold from 0.7 to 0.5 - BGE embeddings typically score lower
             # Only use web search if we have very few results or very low confidence
-            if avg_score < 0.5 or len(case_sources) < 2:
-                print(f"Low confidence ({avg_score:.2f}), using web search augmentation")
+            trigger_reasons = []
+            if avg_score < 0.5:
+                trigger_reasons.append(f"Low confidence ({avg_score:.2f})")
+            if len(case_sources) < 2:
+                trigger_reasons.append("Fewer than 2 corpus matches")
+            if recency_gap:
+                trigger_reasons.append(f"Query references {requested_year}, latest corpus year {latest_case_year}")
+            if case_reference and not reference_found:
+                trigger_reasons.append(f"Case '{case_reference}' missing from corpus")
+
+            if trigger_reasons:
+                print("; ".join(trigger_reasons) + " - using web search augmentation")
                 use_web_search = True
                 web_result = web_search_service.search_legal_content(query.query, max_results=5)
                 web_sources = web_result.get("results", [])
@@ -121,15 +169,15 @@ async def search_cases(query: SearchQuery, db: Session = Depends(get_db)):
             # Use LLM to generate a brief summary if needed
             summary = case.get("holding", "")[:200] if case.get("holding") else "Summary not available"
 
-            sources.append(SearchResult(
-                case_name=case["case_name"],
-                citation=case["citation"],
-                court=case["court"],
-                year=case["year"],
-                summary=summary,
-                relevance_score=case["score"],
-                url=case["url"]
-            ))
+            sources.append({
+                "case_name": case["case_name"],
+                "citation": case["citation"],
+                "court": case["court"],
+                "year": case["year"],
+                "summary": summary,
+                "relevance_score": case["score"],
+                "url": case["url"]
+            })
 
         response_data = {
             "answer": answer,

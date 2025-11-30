@@ -581,7 +581,7 @@ function MessageBubble({ message }: { message: Message }) {
             : "bg-white text-slate-900"
         }`}
       >
-        {isAssistant ? "LX" : "You"}
+        {isAssistant ? "A" : "You"}
       </div>
       <div className="flex-1">
         <div

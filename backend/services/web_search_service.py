@@ -12,13 +12,20 @@ class WebSearchService:
     def __init__(self):
         self.api_key = settings.SEARCH_API_KEY
         self.api_url = "https://api.tavily.com/search"
+        self.default_domains = [
+            "courtlistener.com",
+            "justia.com",
+            "law.cornell.edu",
+            "supremecourt.gov",
+            "oyez.org"
+        ]
 
     def search_legal_content(
         self,
         query: str,
         max_results: int = 5,
         include_domains: Optional[List[str]] = None
-    ) -> List[Dict]:
+    ) -> Dict:
         """
         Search the web for legal content related to the query.
 
@@ -29,32 +36,32 @@ class WebSearchService:
                            (e.g., ["courtlistener.com", "justia.com"])
 
         Returns:
-            List of search results with title, url, content, score
+            Dict containing the Tavily answer (if available) and the raw result list
         """
         try:
+            if not self.api_key:
+                print("Tavily SEARCH_API_KEY is not configured; skipping web search fallback.")
+                return {
+                    "results": [],
+                    "answer": None,
+                    "query": query,
+                    "error": "Missing SEARCH_API_KEY"
+                }
+
             # Default to legal domains if none specified
             if include_domains is None:
-                include_domains = [
-                    "courtlistener.com",
-                    "justia.com",
-                    "law.cornell.edu",
-                    "supremecourt.gov",
-                    "oyez.org"
-                ]
+                include_domains = self.default_domains.copy()
 
             payload = {
                 "api_key": self.api_key,
                 "query": query,
                 "max_results": max_results,
-                "search_depth": "advanced",  # More comprehensive search
+                "search_depth": "advanced",  # Will fallback to basic if unavailable
                 "include_domains": include_domains,
                 "include_answer": True  # Get AI-generated answer summary
             }
 
-            response = requests.post(self.api_url, json=payload, timeout=30)
-            response.raise_for_status()
-
-            data = response.json()
+            data = self._perform_search_with_fallback(payload)
 
             # Format results
             results = []
@@ -84,6 +91,49 @@ class WebSearchService:
                 "query": query,
                 "error": str(e)
             }
+
+    def _perform_search_with_fallback(self, payload: Dict) -> Dict:
+        """
+        Call Tavily API, retrying with basic depth if advanced is unavailable
+        (e.g., when using a dev key).
+        """
+        try:
+            response = requests.post(self.api_url, json=payload, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as http_err:
+            response = http_err.response
+            if self._should_retry_with_basic_depth(response):
+                print("Advanced Tavily search unavailable - falling back to basic depth.")
+                basic_payload = payload.copy()
+                basic_payload["search_depth"] = "basic"
+                # include_answer is unavailable on basic depth
+                basic_payload.pop("include_answer", None)
+                # Dev plan returns at most 3 results reliably
+                basic_payload["max_results"] = min(basic_payload.get("max_results", 5), 3)
+
+                retry_response = requests.post(self.api_url, json=basic_payload, timeout=30)
+                retry_response.raise_for_status()
+                return retry_response.json()
+            raise
+
+    def _should_retry_with_basic_depth(self, response: Optional[requests.Response]) -> bool:
+        if response is None:
+            return False
+
+        if response.status_code not in (400, 402, 403):
+            return False
+
+        try:
+            error_data = response.json()
+            message = error_data.get("error") or error_data.get("message") or str(error_data)
+        except ValueError:
+            message = response.text or ""
+
+        message_lower = message.lower()
+        keywords = ["advanced", "search_depth", "plan", "upgrade"]
+
+        return any(keyword in message_lower for keyword in keywords)
 
     def search_specific_case(self, citation: str) -> Optional[Dict]:
         """
